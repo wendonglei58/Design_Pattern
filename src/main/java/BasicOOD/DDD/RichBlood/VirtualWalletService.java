@@ -1,4 +1,4 @@
-package BasicOOD.DDD.Anemic;
+package BasicOOD.DDD.RichBlood;
 
 import BasicOOD.DDD.model.InsufficientBalanceException;
 import BasicOOD.DDD.model.Status;
@@ -11,37 +11,40 @@ import org.springframework.beans.factory.annotation.Autowired;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
+/**
+ * TODO
+ *
+ * @author Wendong Lei
+ * @version 1.0
+ * @since 6/9/2021
+ **/
 public class VirtualWalletService {
     @Autowired
-    private VirtualWalletRepo walletRepo;
+    VirtualWalletRepo virtualWalletRepo;
     @Autowired
-    private VirtualWalletTransactionRepo transactionRepo;
+    VirtualWalletTransactionRepo transactionRepo;
 
     public VirtualWalletBO getVirtualWallet(Long walletId) {
-        VirtualWalletEntity walletEntity = walletRepo.getVirtualWalletEntityById(walletId);
+        VirtualWalletEntity walletEntity = virtualWalletRepo.getVirtualWalletEntityById(walletId);
         VirtualWalletBO walletBO = new VirtualWalletBO(walletEntity);
         return walletBO;
     }
 
-    public BigDecimal getBalance(Long walletId) {
-        VirtualWalletBO walletBO = getVirtualWallet(walletId);
-        return walletBO.getBalance();
-    }
-
     public void credit(Long walletId, BigDecimal amount) {
-        VirtualWalletEntity walletEntity = walletRepo.getVirtualWalletEntityById(walletId);
-        walletRepo.update(walletId, walletEntity.getBalance().add(amount));
+        VirtualWalletBO bo = getVirtualWallet(walletId);
+        bo.credit(amount);
+        virtualWalletRepo.save(bo);
     }
 
-    public void debit(Long walletId, BigDecimal amount) throws InsufficientBalanceException{
-        VirtualWalletEntity walletEntity = walletRepo.getVirtualWalletEntityById(walletId);
-        if (walletEntity.getBalance().compareTo(BigDecimal.ZERO) < 0) {
-            throw new InsufficientBalanceException("Balance less than amount to debit");
-        }
-        walletRepo.update(walletId, walletEntity.getBalance().subtract(amount));
+    public void debit(Long walletId, BigDecimal amount) throws InsufficientBalanceException {
+        VirtualWalletBO bo = getVirtualWallet(walletId);
+        bo.debit(amount);
+        virtualWalletRepo.save(bo);
     }
 
-    public void transfer(Long fromWalletId, Long toWalletId, BigDecimal amount) throws InsufficientBalanceException {
+    public void transfer(Long fromWalletId, Long toWalletId, BigDecimal amount) {
+        VirtualWalletBO  fromWallet = new VirtualWalletBO(virtualWalletRepo.getVirtualWalletEntityById(fromWalletId));
+        VirtualWalletBO  toWallet = new VirtualWalletBO(virtualWalletRepo.getVirtualWalletEntityById(fromWalletId));
         VirtualWalletTransactionEntity transactionEntity = new VirtualWalletTransactionEntity();
         transactionEntity.setAmount(amount);
         transactionEntity.setFromWalletId(fromWalletId);
@@ -50,19 +53,15 @@ public class VirtualWalletService {
         transactionEntity.setCreatedTime(LocalDateTime.now());
         transactionRepo.save(transactionEntity);
         try {
-            debit(fromWalletId, amount);
-            credit(toWalletId, amount);
-
-        }catch (InsufficientBalanceException ex){
+            fromWallet.debit(amount);
+            toWallet.credit(amount);
+        }catch (InsufficientBalanceException ex) {
             transactionEntity.setTransactionStatus(Status.CLOSED);
             transactionRepo.save(transactionEntity);
-            throw ex;
         }catch (Exception ex) {
             transactionEntity.setTransactionStatus(Status.FAILED);
             transactionRepo.save(transactionEntity);
-            throw ex;
         }
-
         transactionEntity.setTransactionStatus(Status.EXECUTED);
         transactionRepo.save(transactionEntity);
     }
